@@ -35,27 +35,30 @@ export class BowlingGame {
     // remove existing
     if (this.pins) for (const p of this.pins) this.scene.remove(p.mesh);
     if (this.ball?.mesh) this.scene.remove(this.ball.mesh);
+    // Physics world configuration
+    this.world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
+    this.world.allowSleep = true;
+    this.world.defaultContactMaterial.friction = 0.25;
+    this.world.defaultContactMaterial.restitution = 0.04;
+    this.world.broadphase = new CANNON.SAPBroadphase(this.world);
 
-  // Physics world configuration
-  this.world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
-  this.world.allowSleep = true;
-  this.world.defaultContactMaterial.friction = 0.3;
-  this.world.defaultContactMaterial.restitution = 0.05;
-  this.world.broadphase = new CANNON.SAPBroadphase(this.world);
-
-  this.materialLane = new CANNON.Material('lane');
-  this.materialBall = new CANNON.Material('ball');
-  this.materialPin = new CANNON.Material('pin');
-  // Contact materials tuned for bowling feel
-  this.world.addContactMaterial(new CANNON.ContactMaterial(this.materialBall, this.materialLane, { friction:0.015, restitution:0.02 }));
-  this.world.addContactMaterial(new CANNON.ContactMaterial(this.materialBall, this.materialPin, { friction:0.08, restitution:0.28 }));
-  this.world.addContactMaterial(new CANNON.ContactMaterial(this.materialPin, this.materialPin, { friction:0.15, restitution:0.25 }));
+    this.materialLane = new CANNON.Material('lane');
+    this.materialBall = new CANNON.Material('ball');
+    this.materialPin = new CANNON.Material('pin');
+    // Contact materials réalistes
+    // Boule <-> piste : très peu de restitution, faible friction (glisse contrôlée)
+    this.world.addContactMaterial(new CANNON.ContactMaterial(this.materialBall, this.materialLane, { friction:0.01, restitution:0.015 }));
+    // Boule <-> quille : restitution modérée, friction moyenne
+    this.world.addContactMaterial(new CANNON.ContactMaterial(this.materialBall, this.materialPin, { friction:0.10, restitution:0.32 }));
+    // Quille <-> quille : frottement un peu plus élevé, restitution plus basse pour éviter rebonds cartoon
+    this.world.addContactMaterial(new CANNON.ContactMaterial(this.materialPin, this.materialPin, { friction:0.18, restitution:0.18 }));
     this.throwsLeft = 2;
     this.score = 0;
     this.spawnLaneColliders();
     this.pins = this.spawnPins();
-    this.ball = this.spawnBall();
-    this.activeBallType = 'standard';
+  // Conserver le type de boule choisi si déjà défini
+  if (!this.activeBallType) this.activeBallType = 'standard';
+  this.ball = this.spawnBall();
   }
 
   spawnPins() {
@@ -73,7 +76,8 @@ export class BowlingGame {
   mesh.position.set((i*0.16)-offset, 0.40, z);
         this.scene.add(mesh);
         // Compound body: base wider for stability, mid slender, top slight mass
-        const body = new CANNON.Body({ mass:1.5, material:this.materialPin });
+  // Masse réelle d'une quille ~1.52 kg
+  const body = new CANNON.Body({ mass:1.52, material:this.materialPin });
         body.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
         body.angularDamping = 0.35;
         body.linearDamping = 0.01;
