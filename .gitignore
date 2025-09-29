@@ -1,16 +1,41 @@
 # Node / build artifacts
 node_modules/
-.dist/
 dist/
+dist-ssr/
 .vite/
+*.local
 .env
-.DS_Store
+.env.*.local
+!.env.example
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
-# IDE/editor
-.vscode/
-.idea/
-# Misc
+pnpm-debug.log*
+lerna-debug.log*
+
+# System
+.DS_Store
 Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Coverage / tests
+coverage/
+.nyc_output/
+
+# Build caches
+.eslintcache
+.parcel-cache
+.cache
+
+# Optional tool artifacts
+*.tsbuildinfo
+
+# Keep lockfiles (important for reproducible builds)
+# (ne pas ignorer package-lock.json)
