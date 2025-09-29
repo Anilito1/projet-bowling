@@ -35,5 +35,26 @@ npm run dev
 ```
 Ouvrir l'URL locale dans un navigateur compatible WebXR (Chrome, Edge). Activer un casque VR.
 
+## Déploiement GitHub Pages (CI)
+Un workflow GitHub Actions est fourni: `.github/workflows/ci-pages.yml`.
+
+Étapes:
+1. Créer le dépôt sur GitHub et pousser la branche `main`.
+2. Aller dans Settings > Pages > Build and deployment: sélectionner "GitHub Actions".
+3. Le prochain push sur `main` lancera le build et déploiera `dist/`.
+
+`vite.config.js` ajuste automatiquement `base` selon le nom du dépôt:
+- Si le repo est `tonuser.github.io` → base `/`.
+- Sinon → `/nom-du-repo/`.
+
+Pour un domaine personnalisé ou un sous-répertoire différent, édite `vite.config.js` (clé `base`).
+
+### Test build local
+```
+npm run build
+npx serve dist   # ou npx http-server dist
+```
+
+
 ## Licence
 Prototype éducatif.
