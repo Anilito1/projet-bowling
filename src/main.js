@@ -49,13 +49,6 @@ function init() {
 
   buildEnvironment(renderer, scene);
 
-  // TEST CUBE (debug) – devrait être visible devant vous (rouge)
-  const testCubeGeo = new THREE.BoxGeometry(0.3,0.3,0.3);
-  const testCubeMat = new THREE.MeshStandardMaterial({ color:0xff2244, emissive:0x330000 });
-  const testCube = new THREE.Mesh(testCubeGeo, testCubeMat);
-  testCube.position.set(0,1.2,-2);
-  scene.add(testCube);
-
   game = new BowlingGame(scene);
   game.applyDifficulty('normal');
 
@@ -110,11 +103,7 @@ function initDebugHelpers() {
   const axes = new THREE.AxesHelper(1.2);
   const grid = new THREE.GridHelper(20, 40, 0x334455, 0x223033);
   grid.position.y = 0.001;
-  const testCubeGeo = new THREE.BoxGeometry(0.3,0.3,0.3);
-  const testCubeMat = new THREE.MeshStandardMaterial({ color:0xff2244, emissive:0x330000 });
-  const testCube = new THREE.Mesh(testCubeGeo, testCubeMat);
-  testCube.position.set(0,1.2,-2);
-  debugGroup.add(axes, grid, testCube);
+  debugGroup.add(axes, grid);
   debugGroup.visible = debugEnabled;
   scene.add(debugGroup);
 }
