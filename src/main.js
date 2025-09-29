@@ -9,6 +9,7 @@ let renderer, scene, camera, game, audio;
 let controller1, controller2;
 const controllerState = new WeakMap(); // { history: [{pos, time}], grabbingBall:boolean }
 let lastTime = 0;
+let debugGroup; let debugEnabled = false;
 
 init();
 
@@ -22,9 +23,23 @@ function init() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x101820);
 
+  // Audio manager (placeholder sound assets, can be replaced with real files later)
+  audio = new AudioManager();
+  try {
+    const soundMap = {
+      throw: 'assets/sounds/throw.mp3',
+      roll: 'assets/sounds/roll.mp3',
+      pinFall: 'assets/sounds/pinfall.mp3',
+      strike: 'assets/sounds/strike.mp3',
+      spare: 'assets/sounds/spare.mp3'
+    };
+    for (const [id, url] of Object.entries(soundMap)) audio.load(id, url);
+  } catch(e){ console.warn('Audio load skipped', e); }
+
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 50);
   camera.position.set(0, 1.5, 2.2);
   scene.add(camera);
+  camera.lookAt(0,1,-6);
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x222233, 1.0);
   scene.add(hemi);
@@ -33,6 +48,13 @@ function init() {
   scene.add(dir);
 
   buildEnvironment(renderer, scene);
+
+  // TEST CUBE (debug) – devrait être visible devant vous (rouge)
+  const testCubeGeo = new THREE.BoxGeometry(0.3,0.3,0.3);
+  const testCubeMat = new THREE.MeshStandardMaterial({ color:0xff2244, emissive:0x330000 });
+  const testCube = new THREE.Mesh(testCubeGeo, testCubeMat);
+  testCube.position.set(0,1.2,-2);
+  scene.add(testCube);
 
   game = new BowlingGame(scene);
   game.applyDifficulty('normal');
@@ -47,10 +69,10 @@ function init() {
   game.onScoreChange = (s)=> scoreEl.textContent = s;
   game.onThrowsLeftChange = (n)=> throwsEl.textContent = n;
   const showMsg = (t)=> { if (!msgEl) return; msgEl.textContent = t; setTimeout(()=>{ if (msgEl.textContent===t) msgEl.textContent=''; }, 2500); };
-  game.onStrike = ()=> { audio.play('strike'); showMsg('STRIKE! 🎯'); };
-  game.onSpare = ()=> { audio.play('spare'); showMsg('Spare ✔'); };
-  game.onPinFall = ()=> audio.play('pinFall');
-  game.onBallRoll = ()=> { audio.play('roll'); showMsg('Boule lancée'); };
+  game.onStrike = ()=> { audio && audio.play('strike'); showMsg('STRIKE! 🎯'); };
+  game.onSpare = ()=> { audio && audio.play('spare'); showMsg('Spare ✔'); };
+  game.onPinFall = ()=> audio && audio.play('pinFall');
+  game.onBallRoll = ()=> { audio && audio.play('roll'); showMsg('Boule lancée'); };
   game.onGutter = ()=> showMsg('Gouttière...');
   game.onReset = ()=> showMsg('Nouveau frame');
 
@@ -62,12 +84,45 @@ function init() {
   // Basic desktop fallback: click to roll
   window.addEventListener('click', ()=> {
     if (!renderer.xr.isPresenting) {
-      if (!game.ballRolled) { game.rollBall(new THREE.Vector3(0,0,-1), 8); audio.play('throw'); }
+  if (!game.ballRolled) { game.rollBall(new THREE.Vector3(0,0,-1), 8); audio && audio.play('throw'); }
     }
   });
 
   // Setup VR controllers after scene init
   setupVRControllers();
+
+  // Resize listener & initial size sync
+  window.addEventListener('resize', onResize);
+  onResize();
+
+  // Optional debug group (axes/grid/test cube) toggle with F1
+  initDebugHelpers();
+  window.addEventListener('keydown', (e)=> { if (e.key === 'F1') { e.preventDefault(); toggleDebug(); } });
+
+  console.log('[Init] Pins:', game.pins?.length, 'Ball pos:', game.ball?.mesh.position.toArray());
+
+  // Start render loop
+  renderer.setAnimationLoop(onXRFrame);
+}
+
+function initDebugHelpers() {
+  debugGroup = new THREE.Group();
+  const axes = new THREE.AxesHelper(1.2);
+  const grid = new THREE.GridHelper(20, 40, 0x334455, 0x223033);
+  grid.position.y = 0.001;
+  const testCubeGeo = new THREE.BoxGeometry(0.3,0.3,0.3);
+  const testCubeMat = new THREE.MeshStandardMaterial({ color:0xff2244, emissive:0x330000 });
+  const testCube = new THREE.Mesh(testCubeGeo, testCubeMat);
+  testCube.position.set(0,1.2,-2);
+  debugGroup.add(axes, grid, testCube);
+  debugGroup.visible = debugEnabled;
+  scene.add(debugGroup);
+}
+
+function toggleDebug() {
+  debugEnabled = !debugEnabled;
+  if (debugGroup) debugGroup.visible = debugEnabled;
+  console.log('[Debug] toggled', debugEnabled);
 }
 
 function addControllerModel(controller) {
@@ -124,7 +179,7 @@ function releaseBall(controller) {
     if (dt > 0.0001) releaseVel = nowSample.pos.clone().sub(first.pos).divideScalar(dt);
   }
   game.launchBallVelocity(releaseVel);
-  audio.play('throw');
+  audio && audio.play('throw');
 }
 
 // Rough velocity estimator (frame diff). In a real implementation keep a history.
