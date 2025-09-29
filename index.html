@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>WebVR Bowling</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body,html { margin:0; padding:0; overflow:hidden; background:#111; color:#eee; font-family: system-ui, sans-serif; }
+    #uiOverlay { position:fixed; top:10px; left:10px; z-index:10; background:rgba(0,0,0,0.5); padding:12px 16px; border-radius:8px; backdrop-filter: blur(6px); }
+    button, select { font-size:14px; margin:4px 0; }
+    #score { font-weight:bold; }
+  </style>
+</head>
+<body>
+  <div id="uiOverlay">
+    <div>
+      Difficulté:
+      <select id="difficulty">
+        <option value="easy">Facile</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Difficile</option>
+      </select>
+    </div>
+    <div>Score: <span id="score">0</span></div>
+    <div>Lancer restant: <span id="throwsLeft">2</span></div>
+    <div id="message" style="margin-top:4px; font-size:13px; color:#ffd27d;"></div>
+    <button id="resetBtn">Réinitialiser</button>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
