@@ -10,6 +10,16 @@
     button, select { font-size:14px; margin:4px 0; }
     #score { font-weight:bold; }
   </style>
+  <!-- Import map fallback pour exécution SANS Vite (ex: Five Server). Vite ignore ce bloc. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/+esm"
+    }
+  }
+  </script>
 </head>
 <body>
   <div id="uiOverlay">
