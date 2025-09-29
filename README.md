@@ -24,36 +24,32 @@ Prototype d'un jeu de bowling WebXR avec Three.js et Cannon-es (physique basique
 7. Multijoueur futur (WebRTC / WebSocket) + scoreboard.
 8. Ajustements difficulté dynamiques (adaptation selon performance joueur).
 
-## Lancer en développement
-Installer dépendances:
-```
-npm install
-```
-Démarrer:
-```
-npm run dev
-```
-Ouvrir l'URL locale dans un navigateur compatible WebXR (Chrome, Edge). Activer un casque VR.
+## Lancer en développement (version 100% statique, sans Vite)
+Ici tout fonctionne en modules ES natifs via un import map CDN.
 
-## Déploiement GitHub Pages (CI)
-Un workflow GitHub Actions est fourni: `.github/workflows/ci-pages.yml`.
+Option 1: ouvrir directement `index.html` dans Chrome/Edge (désactive parfois certaines features WebXR hors contexte https).
+
+Option 2 (recommandé): lancer un petit serveur local (http-server par ex.)
+```
+npm install --global http-server   # (si pas déjà)
+http-server -c-1 -p 5173 .
+```
+Puis ouvrir http://localhost:5173/
+
+OU en utilisant le script fourni:
+```
+npm run serve
+```
+
+## Déploiement GitHub Pages (sans build)
+Le workflow charge simplement les fichiers tels quels (pas de bundling). L'import map `<script type="importmap">` dans `index.html` résout `three` & `cannon-es` via CDN.
 
 Étapes:
-1. Créer le dépôt sur GitHub et pousser la branche `main`.
-2. Aller dans Settings > Pages > Build and deployment: sélectionner "GitHub Actions".
-3. Le prochain push sur `main` lancera le build et déploiera `dist/`.
+1. Push sur la branche `master` ou `main` (workflow écoute les deux).
+2. Action "CI & Deploy Pages" : copie les sources vers l'artifact.
+3. GitHub Pages publie directement `index.html` à la racine.
 
-`vite.config.js` ajuste automatiquement `base` selon le nom du dépôt:
-- Si le repo est `tonuser.github.io` → base `/`.
-- Sinon → `/nom-du-repo/`.
-
-Pour un domaine personnalisé ou un sous-répertoire différent, édite `vite.config.js` (clé `base`).
-
-### Test build local
-```
-npm run build
-npx serve dist   # ou npx http-server dist
-```
+Pour travailler hors ligne sans CDN, il suffira d'ajouter un dossier `vendor/` avec les modules et mettre à jour l'import map.
 
 
 ## Licence

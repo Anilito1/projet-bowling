@@ -1,9 +1,7 @@
-name: CI & Deploy Pages
+name: Static Deploy Pages
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
     branches: [ main, master ]
 
 permissions:
@@ -16,27 +14,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  upload:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-      - name: Install deps
-        run: npm ci
-      - name: Build
-        run: npm run build
+      - name: Prepare artifact (static root)
+        run: |
+          mkdir deploy
+          shopt -s extglob
+          cp -r index.html src assets README.md deploy 2>/dev/null || true
+          # Ajout d'un .nojekyll pour éviter que GitHub n'ignore les dossiers commençant par underscore
+          touch deploy/.nojekyll
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: deploy
 
   deploy:
-    needs: build
+    needs: upload
     runs-on: ubuntu-latest
     environment:
       name: github-pages

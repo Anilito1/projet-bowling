@@ -1,17 +1,11 @@
 {
-  "name": "webvr-bowling",
-  "version": "0.1.0",
+  "name": "webvr-bowling-static",
+  "version": "0.2.0",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npx vite",
-    "build": "npx vite build",
-    "preview": "npx vite preview"
+    "serve": "npx http-server -c-1 -p 5173 ."
   },
-  "dependencies": {
-    "cannon-es": "^0.20.0",
-    "three": "^0.160.0"
-  },
-  "devDependencies": {
-    "vite": "^5.2.0"
-  }
+  "dependencies": {},
+  "devDependencies": {}
 }
