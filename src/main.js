@@ -10,6 +10,9 @@ let controller1, controller2;
 const controllerState = new WeakMap(); // { history: [{pos, time}], grabbingBall:boolean }
 let lastTime = 0;
 let debugGroup; let debugEnabled = false;
+// Picking helpers
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
 
 init();
 
@@ -48,6 +51,7 @@ function init() {
   scene.add(dir);
 
   buildEnvironment(renderer, scene);
+  removeResidualTestCubes();
 
   game = new BowlingGame(scene);
   game.applyDifficulty('normal');
@@ -74,12 +78,8 @@ function init() {
 
   ensureBallSelector();
 
-  // Basic desktop fallback: click to roll
-  window.addEventListener('click', ()=> {
-    if (!renderer.xr.isPresenting) {
-  if (!game.ballRolled) { game.rollBall(new THREE.Vector3(0,0,-1), 8); audio && audio.play('throw'); }
-    }
-  });
+  // Desktop: cliquer directement sur la boule pour la lancer
+  window.addEventListener('pointerdown', onPointerDownLaunchBall);
 
   // Setup VR controllers after scene init
   setupVRControllers();
@@ -112,6 +112,31 @@ function toggleDebug() {
   debugEnabled = !debugEnabled;
   if (debugGroup) debugGroup.visible = debugEnabled;
   console.log('[Debug] toggled', debugEnabled);
+}
+
+function removeResidualTestCubes() {
+  // Sécurité: si un ancien cube rouge (0xff2244) traîne (cache/HMR), on le purge.
+  scene.traverse(obj => {
+    if (obj.isMesh && obj.material && obj.material.color && obj.material.color.getHex() === 0xff2244) {
+      if (!debugGroup || !debugGroup.children.includes(obj)) {
+        obj.parent && obj.parent.remove(obj);
+      }
+    }
+  });
+}
+
+function onPointerDownLaunchBall(event) {
+  if (renderer.xr.isPresenting) return; // en VR: gestion via contrôleurs
+  if (!game || game.ballRolled) return;
+  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const intersects = raycaster.intersectObject(game.ball.mesh, false);
+  if (intersects.length) {
+    // Lancement dans l'axe -Z (caméra regarde déjà la piste)
+    game.rollBall(new THREE.Vector3(0,0,-1), 8);
+    audio && audio.play('throw');
+  }
 }
 
 function addControllerModel(controller) {
