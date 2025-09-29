@@ -13,6 +13,11 @@ export class BowlingGame {
     this.scene = scene;
     this.resetFrame();
     this.difficulty = 'normal';
+    // Multi-frame scoring
+    this.frames = this._createEmptyFrames(); // 10 frames
+    this.currentFrameIndex = 0;
+    this.extraBallsForTenth = 0; // track bonuses in 10th
+    this.totalScore = 0;
   }
 
   applyDifficulty(diff) {
@@ -53,7 +58,7 @@ export class BowlingGame {
     // Quille <-> quille : frottement un peu plus élevé, restitution plus basse pour éviter rebonds cartoon
     this.world.addContactMaterial(new CANNON.ContactMaterial(this.materialPin, this.materialPin, { friction:0.18, restitution:0.18 }));
     this.throwsLeft = 2;
-    this.score = 0;
+  this.score = 0; // local frame score (legacy UI)
     this.spawnLaneColliders();
     this.pins = this.spawnPins();
   // Conserver le type de boule choisi si déjà défini
@@ -129,6 +134,7 @@ export class BowlingGame {
 
   rollBall(direction, power) {
     if (this.throwsLeft <= 0 || this.ballRolled) return;
+    if (this.isGameFinished()) return;
     const stability = DifficultyProfiles[this.difficulty].ballStability;
     const lateralJitter = (1 - stability) * (Math.random()*2 -1) * 0.15; // reduce curve
     const dir = direction.clone().normalize();
@@ -147,6 +153,7 @@ export class BowlingGame {
    */
   launchBallVelocity(velocity) {
     if (this.throwsLeft <= 0 || this.ballRolled) return;
+    if (this.isGameFinished()) return;
     const v = velocity.clone();
     // Flatten Y (simulate immediate settle on lane) but keep tiny upward if negative
     v.y = 0;
@@ -198,40 +205,165 @@ export class BowlingGame {
     if (this.onScoreChange) this.onScoreChange(this.score);
     if (this.ballInGutter && this.onGutter) this.onGutter();
 
-    // Strike condition (all 10 on first throw)
-    if (this.throwsLeft === 2 && fallen === 10) {
-      this.throwsLeft = 0;
-      if (this.onThrowsLeftChange) this.onThrowsLeftChange(this.throwsLeft);
-      if (this.onStrike) this.onStrike();
-      this.autoResetSoon();
-      return;
+    this._recordThrow(fallen);
+    // Prepare next throw if frame not finished
+    if (!this.isGameFinished() && !this._isCurrentFrameClosed()) {
+      this.world.removeBody(this.ball.body);
+      this.scene.remove(this.ball.mesh);
+      this.ball = this.spawnBall();
+      this.ballRolled = false;
+      this.ballInGutter = false;
     }
-
-    this.throwsLeft -= 1;
-    if (this.onThrowsLeftChange) this.onThrowsLeftChange(this.throwsLeft);
-
-    // Frame ends after second throw or all pins down (spare)
-    if (this.throwsLeft === 0 || this.pins.every(p=>p.fallen)) {
-      if (this.score === 10 && fallen !== 10 && this.onSpare) this.onSpare();
-      this.autoResetSoon();
-      return;
-    }
-
-    // Prepare next throw: fresh ball
-    this.world.removeBody(this.ball.body);
-    this.scene.remove(this.ball.mesh);
-    this.ball = this.spawnBall();
-    this.ballRolled = false;
-    this.ballInGutter = false;
   }
 
   autoResetSoon() {
     setTimeout(()=>{
-      this.resetFrame();
-      this.applyDifficulty(this.difficulty);
-      if (this.onScoreChange) this.onScoreChange(this.score);
-      if (this.onThrowsLeftChange) this.onThrowsLeftChange(this.throwsLeft);
-      if (this.onReset) this.onReset();
-    }, 3000);
+      if (!this.isGameFinished()) {
+        this.resetFrame();
+        this.applyDifficulty(this.difficulty);
+        if (this.onScoreChange) this.onScoreChange(this.score);
+        if (this.onThrowsLeftChange) this.onThrowsLeftChange(this.throwsLeft);
+        if (this.onReset) this.onReset();
+      }
+    }, 2200);
   }
+
+  // ---------------- Bowling multi-frame scoring -----------------
+  _createEmptyFrames() {
+    const frames = [];
+    for (let i=0;i<10;i++) frames.push({ throws: [], cumulative: 0 });
+    return frames;
+  }
+
+  _recordThrow(pinsDownTotalThisFrame) {
+    const f = this.frames[this.currentFrameIndex];
+    const previousPins = f.throws.length ? f.throws[f.throws.length-1].pinsDownTotal : 0;
+    const pinsThisThrow = Math.min(10 - previousPins, pinsDownTotalThisFrame - previousPins);
+    // Derive symbol
+    let symbol = '';
+    const frameIndex = this.currentFrameIndex;
+    const isTenth = frameIndex === 9;
+    const firstThrowPins = f.throws[0]?.pinsThisThrow;
+    if (f.throws.length === 0 && pinsDownTotalThisFrame === 10) {
+      symbol = 'X'; // Strike
+    } else if (f.throws.length >=1 && (pinsDownTotalThisFrame === 10) && !isTenth) {
+      symbol = '/'; // Spare
+    } else if (f.throws.length >=1 && isTenth && (previousPins + pinsThisThrow === 10) && firstThrowPins !== 10) {
+      symbol = '/';
+    } else {
+      symbol = String(pinsThisThrow);
+    }
+    f.throws.push({ pinsThisThrow, pinsDownTotal: pinsDownTotalThisFrame, symbol });
+
+    // Bonus scoring propagation
+    this._applyBonuses();
+    if (this._isCurrentFrameClosed()) {
+      this._advanceFrame();
+      this.autoResetSoon();
+    } else {
+      // second (or bonus) throw remains
+      this.throwsLeft -= 1;
+      if (this.onThrowsLeftChange) this.onThrowsLeftChange(this.throwsLeft);
+    }
+    this._recomputeCumulative();
+    if (this.onScoreboardChange) this.onScoreboardChange(this.frames, this.currentFrameIndex, this.totalScore);
+  }
+
+  _isCurrentFrameClosed() {
+    const i = this.currentFrameIndex;
+    const f = this.frames[i];
+    const isTenth = i === 9;
+    if (!isTenth) {
+      // strike or two throws
+      return f.throws[0]?.symbol === 'X' || f.throws.length === 2;
+    }
+    // 10th frame rules
+    if (f.throws.length < 2) return false;
+    if (f.throws.length === 2) {
+      // Need bonus if strike or spare
+      const sym0 = f.throws[0].symbol; const sym1 = f.throws[1].symbol;
+      if (sym0 === 'X' || sym1 === '/' || sym1 === 'X') return false; // expect third
+      return true; // open frame
+    }
+    // 3 throws -> done
+    return true;
+  }
+
+  _advanceFrame() {
+    if (this.currentFrameIndex < 9) {
+      this.currentFrameIndex++;
+      this.throwsLeft = 2;
+    } else {
+      // game finished
+      if (this.onGameFinished) this.onGameFinished(this.totalScore);
+    }
+  }
+
+  _applyBonuses() {
+    // Standard scoring: strike adds next two rolls, spare adds next one.
+    // We'll recompute cumulatives each time; simpler: just do recompute at end.
+  }
+
+  _recomputeCumulative() {
+    let rolls = []; // flatten rolls with pin counts by order
+    for (let i=0;i<10;i++) {
+      const fr = this.frames[i];
+      for (const t of fr.throws) rolls.push({ frame:i, pins:t.pinsThisThrow, symbol:t.symbol });
+    }
+    // compute bonuses by iterating frames
+    let rollIndex = 0;
+    for (let i=0;i<10;i++) {
+      const fr = this.frames[i];
+      // Determine frame base pin sum
+      let frameScore = 0;
+      if (fr.throws.length === 0) { fr.cumulative = (i? this.frames[i-1].cumulative:0); continue; }
+      const symbols = fr.throws.map(t=>t.symbol);
+      const first = symbols[0];
+      const second = symbols[1];
+      // Gather this frame's rolls in flattened sequence starting at current rollIndex snapshot
+      // Build list of numeric pins for computation; strike counts as 10, spare second counts as remaining to 10.
+      let frameRollPins = [];
+      for (let k=0;k<fr.throws.length;k++) {
+        const th = fr.throws[k];
+        if (k===1 && th.symbol === '/') frameRollPins.push(10 - fr.throws[0].pinsThisThrow); else if (th.symbol === 'X') frameRollPins.push(10); else frameRollPins.push(th.pinsThisThrow);
+      }
+      // Add frame base
+      frameScore = frameRollPins.reduce((a,b)=>a+b,0);
+      // Bonus (frames 0..8)
+      if (i < 9) {
+        if (first === 'X') {
+          // next two rolls anywhere
+          const bonus = this._nextNRollPins(rolls, rollIndex+1, 2);
+          frameScore = 10 + bonus;
+        } else if (second === '/') {
+          // next one roll
+            const bonus = this._nextNRollPins(rolls, rollIndex+fr.throws.length, 1);
+            frameScore = 10 + bonus;
+        }
+      }
+      const prev = i? this.frames[i-1].cumulative:0;
+      fr.cumulative = prev + frameScore;
+      // Advance rollIndex by number of actual rolls used in flattened list for frames <9; in 10th just consume all throws.
+      if (i < 9) {
+        if (first === 'X') rollIndex += 1; else rollIndex += 2; // open or spare uses two rolls, strike one
+      } else {
+        rollIndex += fr.throws.length; // 10th frame variable length
+      }
+    }
+    this.totalScore = this.frames[9].cumulative;
+  }
+
+  _nextNRollPins(flatRolls, start, n) {
+    let sum = 0; let count=0;
+    for (let i=start; i<flatRolls.length && count<n; i++) {
+      const r = flatRolls[i];
+      if (r.symbol === 'X') { sum += 10; count++; }
+      else if (r.symbol === '/') { // spare symbol only appears as second roll; counts to (10 - previous pins)
+        sum += 10 - flatRolls[i-1].pins; count++; }
+      else { sum += r.pins; count++; }
+    }
+    return sum;
+  }
+
+  isGameFinished() { return this.currentFrameIndex === 9 && this._isCurrentFrameClosed(); }
 }

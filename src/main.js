@@ -55,6 +55,7 @@ function init() {
 
   game = new BowlingGame(scene);
   game.applyDifficulty('normal');
+  setupScoreboard(game);
 
   // UI wiring
   const scoreEl = document.getElementById('score');
@@ -72,6 +73,11 @@ function init() {
   game.onBallRoll = ()=> { audio && audio.play('roll'); showMsg('Boule lancée'); };
   game.onGutter = ()=> showMsg('Gouttière...');
   game.onReset = ()=> showMsg('Nouveau frame');
+  game.onScoreboardChange = (frames, current, total)=> renderScoreboard(frames, current, total);
+  game.onGameFinished = (total)=> {
+    renderScoreboard(game.frames, game.currentFrameIndex, total);
+    console.log('Partie terminée - Score total:', total);
+  };
 
   diffEl.addEventListener('change', e=> game.applyDifficulty(e.target.value));
   resetBtn.addEventListener('click', ()=> { game.resetFrame(); game.applyDifficulty(diffEl.value); scoreEl.textContent=game.score; throwsEl.textContent=game.throwsLeft; });
@@ -252,4 +258,36 @@ function ensureBallSelector() {
   });
   wrap.appendChild(label);
   wrap.appendChild(sel);
+}
+
+// ---------------- Scoreboard UI ----------------
+function setupScoreboard(game){
+  const el = document.getElementById('scoreboard');
+  if(!el) return;
+  renderScoreboard(game.frames, game.currentFrameIndex, game.totalScore);
+}
+
+function renderScoreboard(frames, currentIndex, total){
+  const el = document.getElementById('scoreboard'); if(!el) return;
+  el.innerHTML='';
+  frames.forEach((f,idx)=>{
+    const frame = document.createElement('div'); frame.className='frame'+(idx===currentIndex && !f.locked?' current':'');
+    const header = document.createElement('div'); header.className='frame-header'; header.textContent = (idx+1);
+    frame.appendChild(header);
+    const throwsDiv = document.createElement('div'); throwsDiv.className='throws';
+    const isTenth = idx===9;
+    const maxBoxes = isTenth?3:2;
+    for(let i=0;i<maxBoxes;i++){
+      const box = document.createElement('div'); box.className='throw-box'+(isTenth && i===2?' bonus':'');
+      const t = f.throws[i];
+      if(t){ box.textContent = t.symbol; if(t.symbol==='0') box.style.opacity='0.45'; }
+      frame.appendChild(throwsDiv); throwsDiv.appendChild(box);
+    }
+    const cum = document.createElement('div'); cum.className='cumulative';
+    if (f.cumulative>0 || idx===frames.length-1) cum.textContent = f.cumulative || '';
+    frame.appendChild(cum);
+    el.appendChild(frame);
+  });
+  // Total overlay (optional)
+  el.setAttribute('data-total', total);
 }
