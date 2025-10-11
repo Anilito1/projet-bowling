@@ -6,6 +6,7 @@ import { buildEnvironment } from './environment.js';
 import { AudioManager } from './audio.js';
 
 let renderer, scene, camera, game, audio;
+let envUI; // object returned from buildEnvironment (score canvas/texture)
 let controller1, controller2;
 const controllerState = new WeakMap(); // { history: [{pos, time}], grabbingBall:boolean }
 let lastTime = 0;
@@ -50,12 +51,26 @@ function init() {
   dir.position.set(3,5,2);
   scene.add(dir);
 
-  buildEnvironment(renderer, scene);
+  envUI = buildEnvironment(renderer, scene);
   removeResidualTestCubes();
 
   game = new BowlingGame(scene);
   game.applyDifficulty('normal');
   setupScoreboard(game);
+
+  // Position the 3D scoreboard once above the ball spawn (start of the lane).
+  try {
+    if (envUI && envUI.scorePanel && game && game.ball && game.ball.mesh) {
+      const bp = game.ball.mesh.position;
+      envUI.scorePanel.position.x = bp.x;
+      // place slightly toward the player in front of the ball spawn so it's readable
+      envUI.scorePanel.position.z = bp.z + 0.6;
+      // keep fixed height (defined in environment)
+      envUI.scorePanel.position.y = envUI.scorePanel.position.y || 2.5;
+      // ensure a slight tilt downward
+      envUI.scorePanel.rotation.x = -0.25;
+    }
+  } catch(e) { /* ignore */ }
 
   // UI wiring
   const scoreEl = document.getElementById('score');
@@ -284,10 +299,94 @@ function renderScoreboard(frames, currentIndex, total){
       frame.appendChild(throwsDiv); throwsDiv.appendChild(box);
     }
     const cum = document.createElement('div'); cum.className='cumulative';
-    if (f.cumulative>0 || idx===frames.length-1) cum.textContent = f.cumulative || '';
+    // Show cumulative only when the frame is closed (played)
+    let closed = false;
+    try { closed = (idx < currentIndex) || (idx === currentIndex && game._isCurrentFrameClosed()); } catch(e) { closed = (f.cumulative>0); }
+    if (closed) {
+      if (typeof f.cumulative === 'number') cum.textContent = String(f.cumulative);
+      else cum.textContent = '';
+    }
     frame.appendChild(cum);
     el.appendChild(frame);
   });
   // Total overlay (optional)
   el.setAttribute('data-total', total);
+  // Also render to 3D panel canvas (if available) so it's visible in VR
+  if (envUI && envUI.scoreCtx && envUI.scoreTex) {
+    const ctx = envUI.scoreCtx;
+    const canvas = envUI.scoreCanvas;
+    // Table layout: 11 cols (10 frames + TOTAL), 3 rows
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    // Background
+    ctx.fillStyle = '#222831'; ctx.fillRect(0,0,w,h);
+    // Grid metrics
+    const cols = 11;
+    const colW = Math.floor(w / cols);
+    const headerH = Math.floor(h * 0.18);
+    const middleH = Math.floor(h * 0.44);
+    const bottomH = h - headerH - middleH;
+    const pad = 8;
+    // Draw vertical separators and headers
+    ctx.strokeStyle = '#334155'; ctx.lineWidth = 2;
+    for (let c=0;c<cols;c++) {
+      const x = c * colW;
+      ctx.strokeRect(x+1, 1, colW-2, h-2);
+    }
+    // Header row: frame numbers 1..10 and TOTAL
+    ctx.fillStyle = '#e6f0ff'; ctx.font = `${Math.floor(headerH*0.45)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let c=0;c<10;c++) {
+      const cx = c*colW + colW/2;
+      ctx.fillText(String(c+1), cx, headerH/2);
+    }
+    ctx.fillText('TOTAL', 10*colW + colW/2, headerH/2);
+    // Middle row: throws (two small cells per frame; 10th frame can have 3)
+    const throwFont = `${Math.floor(middleH*0.35)}px monospace`;
+    ctx.font = throwFont; ctx.textBaseline = 'middle';
+    for (let c=0;c<10;c++){
+      const f = frames[c] || { throws: [] };
+      const x0 = c*colW;
+      const midTop = headerH;
+      const midBottom = headerH + middleH;
+      // For frames 0..8 => 2 cells; frame 9 => 3 cells
+      const cells = (c===9) ? 3 : 2;
+      const cellW = Math.floor((colW - pad*2) / cells);
+      for (let i=0;i<cells;i++){
+        const cx = x0 + pad + i*cellW + cellW/2;
+        // draw small rect
+        ctx.fillStyle = '#11161b';
+        ctx.fillRect(x0 + pad + i*cellW, midTop + pad/2, cellW - 2, middleH - pad);
+        ctx.strokeStyle = '#3b5166'; ctx.strokeRect(x0 + pad + i*cellW, midTop + pad/2, cellW - 2, middleH - pad);
+        // content
+        const symbol = f.throws[i] ? f.throws[i].symbol : '';
+        ctx.fillStyle = (i===0 && symbol==='X') ? '#ffcc66' : '#cfe4ff';
+        ctx.fillText(symbol || '', cx, midTop + middleH/2);
+      }
+    }
+    // 11th column middle+bottom is a single tall cell for total
+    const totalX0 = 10*colW;
+    ctx.fillStyle = '#11161b'; ctx.fillRect(totalX0 + pad, headerH + pad/2, colW - pad*2, middleH + bottomH - pad);
+    ctx.strokeStyle = '#3b5166'; ctx.strokeRect(totalX0 + pad, headerH + pad/2, colW - pad*2, middleH + bottomH - pad);
+    ctx.fillStyle = '#ffffff'; ctx.font = `${Math.floor((middleH+bottomH)*0.45)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(total || 0), totalX0 + colW/2, headerH + (middleH+bottomH)/2);
+    // Bottom row: cumulative per frame
+    ctx.font = `${Math.floor(bottomH*0.45)}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let c=0;c<10;c++){
+      const f = frames[c] || {};
+      const cx = c*colW + colW/2;
+      // Determine if frame is closed
+      let closed = false;
+      try { closed = (c < currentIndex) || (c === currentIndex && game._isCurrentFrameClosed()); } catch(e) { closed = (f.cumulative && f.cumulative>0); }
+  const cum = closed && (typeof f.cumulative === 'number') ? String(f.cumulative) : '';
+      ctx.fillStyle = (c===currentIndex) ? '#ffd27a' : '#cfe4ff';
+      ctx.fillText(cum, cx, headerH + middleH + bottomH/2);
+    }
+    // Small improvement: if 10th frame has 3 throws, populate them accordingly
+    // (we already drew 3 cells for frame 10). For spare/strike symbols the game provides 'X' and '/'.
+
+    // Panel position remains fixed (defined in environment). Do not recenter here.
+
+    // mark texture needs update
+    envUI.scoreTex.needsUpdate = true;
+  }
 }

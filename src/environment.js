@@ -76,10 +76,25 @@ export function buildEnvironment(renderer, scene) {
   laneGroup.add(backPanel);
 
   // Panneau score décoratif au-dessus du joueur
-  const scorePanelGeo = new THREE.PlaneGeometry(2.4,0.7);
-  const scorePanelMat = new THREE.MeshStandardMaterial({ color:0x29323b, emissive:0x11181f, roughness:0.6, metalness:0.1 });
+  // Restore horizontal length to original (2.4) while keeping the reduced vertical height.
+  const scorePanelGeo = new THREE.PlaneGeometry(2.4,0.4666667);
+  // Create a canvas that will be used both for the on-screen DOM scoreboard (via main) and as a texture
+  // Use resolution matching the plane aspect ratio to avoid visual stretching
+  const scoreCanvas = document.createElement('canvas');
+  // New aspect = 2.4 / 0.4666667 ~= 5.142857 -> choose 1024x200 to keep horizontal resolution and match aspect (~5.12)
+  scoreCanvas.width = 1024; scoreCanvas.height = 200; // 1024/200 = 5.12
+  const scoreCtx = scoreCanvas.getContext('2d');
+  // initial clear
+  scoreCtx.fillStyle = '#29323b'; scoreCtx.fillRect(0,0,scoreCanvas.width, scoreCanvas.height);
+  // Create texture from canvas and use it on the panel
+  const scoreTex = new THREE.CanvasTexture(scoreCanvas);
+  scoreTex.encoding = THREE.sRGBEncoding;
+  scoreTex.anisotropy = 4;
+  const scorePanelMat = new THREE.MeshStandardMaterial({ map: scoreTex, emissive:0x11181f, roughness:0.6, metalness:0.1 });
   const scorePanel = new THREE.Mesh(scorePanelGeo, scorePanelMat);
-  scorePanel.position.set(0,2.6,1.4);
+  scorePanel.name = 'scorePanel';
+  // Position slightly above the top of the side walls (walls are 2.4 high); default set to 2.5m
+  scorePanel.position.set(0,2.5,1.4);
   scorePanel.rotation.x = -0.25;
   group.add(scorePanel);
 
@@ -100,7 +115,7 @@ export function buildEnvironment(renderer, scene) {
   const edgeRight = edgeLeft.clone(); edgeRight.position.x = 0.6;
   laneGroup.add(edgeLeft, edgeRight);
 
-  return { group, laneGroup };
+  return { group, laneGroup, scorePanel, scoreCanvas, scoreCtx, scoreTex };
 }
 
 function makeWoodTexture() {
